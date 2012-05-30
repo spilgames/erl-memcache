@@ -1,0 +1,20 @@
+{application, memcache,
+	[
+	{description, ""},
+	{vsn, git},
+	{registered, []},
+	{applications, [
+		kernel,
+		stdlib ]},
+	{mod, { memcache, []}},
+	{env, [
+		{pools, [
+			% needs to be called pool1, hardcoded
+			{pool1, [
+				{size, 20},
+				{max_overflow, 20}
+				]}
+			]}
+
+		]}
+	]}.
