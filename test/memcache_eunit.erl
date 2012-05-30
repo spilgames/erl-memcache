@@ -20,12 +20,15 @@ all_test_() ->
         fun (Cleaners) ->
             lists:foreach(fun (F) -> F() end, Cleaners)
         end,
-        [   
+        [            
             ?_assertEqual(<<>>, memcache:flush()),  
             ?_assertEqual(<<>>, memcache:get(testkey752235565464453452)),       
             ?_assertEqual(<<"Not found">>, memcache:delete(testkey423980986345809388)),
             ?_assertEqual(<<>>, memcache:set(testkey662234300980881236, <<"testvalue">>)),
-            
+            ?_assertExit({{badarg,_},_}, memcache:set(testkey235230983420348394, 1)),
+            ?_assertExit({{badarg,_},_}, memcache:set(testkey235230983420348394, "abc")),
+            ?_assertExit({{badarg,_},_}, memcache:set(testkey235230983420348394, atom)),
+                       
             ?_test(begin
                         ?assertMatch(<<>>, memcache:set(testkey234239982304983434, <<"testvalue">>)),
                         ?assertMatch(<<"testvalue">>, memcache:get(testkey234239982304983434)),
@@ -40,4 +43,3 @@ all_test_() ->
                         ?assertMatch(<<>>, memcache:get(testkey884352345434356721)) 
             end)
         ]}.
-

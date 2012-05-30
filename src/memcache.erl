@@ -40,6 +40,7 @@ start() -> elibs_application:start(?MODULE).
 stop() -> application:stop(?MODULE).
 
 start(_StartType, _StartArgs) ->
+    elibs_application:load_extra_config(),
     supervisor:start_link({local, memcache_sup}, ?MODULE, []).
 
 stop(_State) ->
