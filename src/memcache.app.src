@@ -1,0 +1,8 @@
+{application, memcache,
+	[
+	{description, "Memcache wrapper based on erlmc and poolboy"},
+	{vsn, git},
+	{registered, []},
+	{applications, [kernel, stdlib]},
+	{mod, { memcache_app, []}},
+	{env, []}]}.
