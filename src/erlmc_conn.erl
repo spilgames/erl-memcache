@@ -105,7 +105,7 @@ start_link(Args) ->
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
--type state()::gen_tcp:socket().
+-type state()::port().
 
 -type call_type()::{get, memcache:key()}
     | {add, memcache:key(), memcache:value(), memcache:expiration()}
@@ -131,7 +131,7 @@ init({Host, Port}) ->
 %% @private
 -spec handle_call(call_type(), {pid(), Tag::term()}, state()) ->
     {reply, memcache:value(), state()} | {stop, term(), {error, term(), state()}} 
-    | {noreply | state()}.
+    | {noreply, state()}.
 
 handle_call({get, K}, _From, Socket) ->
 	Key = key_to_binary(K),
@@ -289,11 +289,11 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%% Internal functions
 %%--------------------------------------------------------------------     
 
--spec collect_stats_from_socket(gen_tcp:socket()) -> [{atom(), list()}] | {error, term()}.
+-spec collect_stats_from_socket(port()) -> [{atom(), list()}] | {error, term()}.
 collect_stats_from_socket(Socket) ->
     collect_stats_from_socket(Socket, []).
    
--spec collect_stats_from_socket(gen_tcp:socket(), [{atom(), list()}]) ->
+-spec collect_stats_from_socket(port(), [{atom(), list()}]) ->
     [{atom(), list()}] | {error, term()}.
 collect_stats_from_socket(Socket, Acc) ->
     case recv(Socket) of
@@ -306,17 +306,17 @@ collect_stats_from_socket(Socket, Acc) ->
                                       [{binary_to_atom(Key, utf8), binary_to_list(Value)}|Acc])
     end.
 
--spec send_recv(gen_tcp:socket(), #request{}) -> {error, term()} | #response{}.
+-spec send_recv(port(), #request{}) -> {error, term()} | #response{}.
 send_recv(Socket, Request) ->
     ok = send(Socket, Request),
     recv(Socket).
 
--spec send(gen_tcp:socket(), #request{}) -> ok | {error, term()}.
+-spec send(port(), #request{}) -> ok | {error, term()}.
 send(Socket, Request) ->
     Bin = encode_request(Request),
     gen_tcp:send(Socket, Bin).
 
--spec recv(gen_tcp:socket()) -> {error, term()} | #response{}.
+-spec recv(port()) -> {error, term()} | #response{}.
 recv(Socket) ->
     case recv_header(Socket) of
 		{error, Err} ->
@@ -340,11 +340,11 @@ encode_request(Request) when is_record(Request, request) ->
     CAS = Request#request.cas,
     <<Magic:8, Opcode:8, KeySize:16, ExtrasSize:8, DataType:8, Reserved:16, BodySize:32, Opaque:32, CAS:64, Body:BodySize/binary>>.
 
--spec recv_header(gen_tcp:socket()) -> {error, term()} | #response{}.
+-spec recv_header(port()) -> {error, term()} | #response{}.
 recv_header(Socket) ->
     decode_response_header(recv_bytes(Socket, 24)).
   
--spec recv_body(gen_tcp:socket(), #response{}) -> {error, term()} | #response{}.
+-spec recv_body(port(), #response{}) -> {error, term()} | #response{}.
 recv_body(Socket, #response{key_size = KeySize, extras_size = ExtrasSize, body_size = BodySize}=Resp) ->
     decode_response_body(recv_bytes(Socket, BodySize), ExtrasSize, KeySize, Resp).
     
@@ -373,7 +373,7 @@ decode_response_body(Bin, ExtrasSize, KeySize, Resp) ->
         value = Value
     }.
 
--spec recv_bytes(gen_tcp:socket(), pos_integer()) -> binary() | term().
+-spec recv_bytes(port(), pos_integer()) -> binary() | term().
 recv_bytes(_, 0) -> <<>>;
 recv_bytes(Socket, NumBytes) ->
     case gen_tcp:recv(Socket, NumBytes) of

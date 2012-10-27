@@ -28,7 +28,7 @@ start_link() ->
 %% @doc
 %% Adds a pool to the list of children of this supervisor
 -spec add_pool(memcache:pool_name(), memcache:pool_host(), memcache:pool_port(),
-               memcache:pool_size(), memcache:pool_max_overflow()) -> ok | {error, term()}.
+               memcache:pool_size(), memcache:pool_max_overflow()) -> {ok, pid()} | {error, term()}.
 %% @end
 add_pool(Poolname, Host, Port, Size, MaxOverflow) ->
     case start_memcache(Host, Port) of
@@ -41,13 +41,16 @@ add_pool(Poolname, Host, Port, Size, MaxOverflow) ->
 
 %% @doc
 %% Terminates a pool and removes its childspec from this supervisor
--spec remove_pool(memcache:poolname(), memcache:pool_host(), memcache:pool_port()) -> ok | {error, term()}.
+-spec remove_pool(memcache:pool_name(), memcache:pool_host(), memcache:pool_port()) -> ok | {error, term()}.
 %% @end
 remove_pool(Poolname, Host, Port) ->
-    stop_memcache(Host, Port),
+    ok=stop_memcache(Host, Port),
+%    poolboy:stop(Poolname),
     case supervisor:terminate_child(?MODULE, Poolname) of
-        ok -> ok = supervisor:delete_child(?MODULE, Poolname);
-        {error, not_found} -> {error, not_found}
+        ok -> 
+            ok = supervisor:delete_child(?MODULE, Poolname);
+        {error, not_found} ->
+            {error, not_found}
     end.
 
 %%%===================================================================
@@ -74,9 +77,14 @@ build_child_spec(Poolname, Host, Port, Size, MaxOverflow) ->
 
 -spec start_memcache(memcache:pool_host(), memcache:pool_port()) -> ok | {error, term()}.
 start_memcache(Host, Port) ->
-    case os:cmd(elibs_string:format("memcached -d -l ~s -m 64 -p ~p", [Host, Port])) of
-        [] -> ok;
-        Other -> {error, Other}
+    Cmd=elibs_string:format("memcached -d -l ~s -m 64 -p ~p", [Host, Port]),
+    io:format("'~s'~n", [Cmd]),
+    case os:cmd(Cmd) of
+        [] ->
+            timer:sleep(500),
+            ok;
+        Other ->
+            {error, Other}
     end.
 
 -spec stop_memcache(memcache:pool_host(), memcache:pool_port()) -> ok | {error, term()}.
@@ -85,6 +93,7 @@ stop_memcache(Host, Port) ->
             "kill -9 $(ps aux | grep memcached | grep ~s | grep ~p | awk '{print $2}')",
             [Host, Port]
         ),
+    io:format("'~s'~n", [Cmd]),
     case os:cmd(Cmd) of
         [] -> ok;
         Other -> {error, Other}

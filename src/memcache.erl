@@ -66,7 +66,7 @@ start_link() ->
     ok | {error, term()}.
 %% @end
 start_pool(Poolname, Host, Port, Size, MaxOverflow) ->
-    gen_server:call(?MODULE, {start_pool, Poolname, Host, Port, Size, MaxOverflow}).
+    gen_server:call(?MODULE, {start_pool, {Poolname, Host, Port, Size, MaxOverflow}}).
 
 %% @doc
 %% Stops the given pool
@@ -106,9 +106,9 @@ set(Poolname, Key, Value) ->
 set(Poolname, Key, Value, Expiration) ->
     Op = fun () ->
             Worker = poolboy:checkout(Poolname),
-            Reply = gen_server:call(Worker, {set, Key, Value, Expiration}),
+            <<>> = gen_server:call(Worker, {set, Key, Value, Expiration}),
             poolboy:checkin(Poolname, Worker),
-            {ok, Reply}
+            {ok, Value}
     end,
     run_in_pool(Poolname, Op).
 
@@ -149,14 +149,16 @@ init([]) ->
     {ok, #state{pools=?MEMCACHE_POOLS_ETS}}.
 
 -type call_type()::{start_pool, pool()} | {stop_pool, pool_name()} | term().
--spec handle_call(call_type(), any(), #state{}) -> {reply, ok | {error, term()}} | {noreply, #state{}}.
+-spec handle_call(call_type(), any(), #state{}) ->
+    {reply, ok | {error, term()}, #state{}} | {noreply, #state{}}.
 handle_call({start_pool, {Poolname, Host, Port, Size, MaxOverflow}}, _From, State) ->
     Res = case check_pool_availability(Poolname, Port) of
         ok ->
-            case memcache_pool_sup:add_pool(Poolname, Host, Port, Size, MaxOverflow) of
-                ok ->
-                    ok=ets:insert(?MEMCACHE_POOLS_ETS,
-                               [{Poolname, Host, Port, Size, MaxOverflow}]);
+            case memcache_pools_sup:add_pool(Poolname, Host, Port, Size, MaxOverflow) of
+                {ok, _Pid} ->
+                    true=ets:insert(?MEMCACHE_POOLS_ETS,
+                                    [{Poolname, Host, Port, Size, MaxOverflow}]),
+                    ok;
                 {error, _}=E ->
                     E
             end;
@@ -168,9 +170,10 @@ handle_call({stop_pool, Poolname}, _From, State) ->
         [] ->
             ok;
         [{Poolname, Host, Port, _Size, _MaxOverflow}] ->
-            case memcache_pool_sup:stop_pool(Poolname, Host, Port) of
+            case memcache_pools_sup:remove_pool(Poolname, Host, Port) of
                 ok ->
-                    ok = ets:delete(?MEMCACHE_POOLS_ETS, Poolname);
+                    true = ets:delete(?MEMCACHE_POOLS_ETS, Poolname),
+                    ok;
                 {error, _}=E ->
                     E
             end
@@ -199,10 +202,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
--spec run_in_pool(pool_name(), fun (() -> term())) -> term() | {error, not_found}.
+-spec run_in_pool(pool_name(), fun (() -> term())) -> term() | {error, pool_not_found}.
 run_in_pool(Poolname, Op) ->
     case ets:lookup(?MEMCACHE_POOLS_ETS, Poolname) of
-        [] -> {error, not_found};
+        [] -> {error, pool_not_found};
         [_] -> Op()
     end.
 
@@ -215,7 +218,7 @@ check_pool_availability(Poolname, Port) ->
                 {ok, Sock} ->
                     gen_tcp:close(Sock),
                     ok;
-                {error, econnrefused} ->
+                {error, Reason} when Reason == eaddrinuse; Reason == econnrefused ->
                     {error, addr_in_use}
             end;
         [_] ->
