@@ -9,11 +9,12 @@
 -export([delete/2,
          flush/1,
          get/2,
+         remove_all_pools/0,
          set/3,
          set/4,
          start/0,
          start_link/0,
-         start_pool/5,
+         start_pool/6,
          stop/0,
          stop_pool/1
         ]).
@@ -23,7 +24,7 @@
 -type pool_port()::pos_integer().
 -type pool_size()::pos_integer().
 -type pool_max_overflow()::pos_integer().
--type pool()::{pool_name(), pool_host(), pool_port(), pool_size(), pool_max_overflow()}.
+-type pool()::{pool_name(), pool_host(), pool_port(), pool_size(), pool_max_overflow(), boolean()}.
 -type key()::binary()|term().
 -type value()::binary()|term().
 -type expiration()::pos_integer().
@@ -61,17 +62,21 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 %% @doc Starts a cache pool.
-%% If it was already started, just returns ok.
--spec start_pool(pool_name(), pool_host(), pool_port(), pool_size(), pool_max_overflow()) ->
-    ok | {error, term()}.
+%% The StartServer variable decides whether this application takes care of starting the memcached
+%% server as well. If it was already started, just returns ok. Note that the start server
+%% functionality will only work for starting local memcached instances, so Host should be a
+%% valid name for localhost or an IP address for one of the local network interfaces.
+-spec start_pool(pool_name(), pool_host(), pool_port(),
+                 pool_size(), pool_max_overflow(), boolean()) -> ok | {error, term()}.
 %% @end
-start_pool(Poolname, Host, Port, Size, MaxOverflow) ->
-    gen_server:call(?MODULE, {start_pool, {Poolname, Host, Port, Size, MaxOverflow}}).
+start_pool(Poolname, Host, Port, Size, MaxOverflow, StartServer) ->
+    gen_server:call(?MODULE, {start_pool, {Poolname, Host, Port, Size, MaxOverflow, StartServer}}).
 
 %% @doc
-%% Stops the given pool
+%% Stops the given pool. If the memcached server for the pool had been started by this application,
+%% it is stopped as well.
 %% @end
--spec stop_pool(pool_name()) -> ok | {error, pool_not_found}.
+-spec stop_pool(pool_name()) -> ok | {error, pool_not_found | term()}.
 %%
 stop_pool(Poolname) ->
     gen_server:call(?MODULE, {stop_pool, Poolname}).
@@ -83,9 +88,13 @@ stop_pool(Poolname) ->
 get(Poolname, Key) ->
     Op = fun() ->
             Worker = poolboy:checkout(Poolname),
-            Reply = gen_server:call(Worker, {get, Key}),
-            poolboy:checkin(Poolname, Worker),
-            {ok, Reply}
+            case gen_server:call(Worker, {get, Key}) of
+                {error, R} ->
+                    {error, {poolboy_error, R}};
+                Reply ->
+                    poolboy:checkin(Poolname, Worker),
+                    {ok, Reply}
+            end
     end,
     run_in_pool(Poolname, Op).
 
@@ -106,22 +115,31 @@ set(Poolname, Key, Value) ->
 set(Poolname, Key, Value, Expiration) ->
     Op = fun () ->
             Worker = poolboy:checkout(Poolname),
-            <<>> = gen_server:call(Worker, {set, Key, Value, Expiration}),
-            poolboy:checkin(Poolname, Worker),
-            {ok, Value}
+            case gen_server:call(Worker, {set, Key, Value, Expiration}) of
+                {error, R} ->
+                    {error, {poolboy_error, R}};
+                <<>> ->
+                    poolboy:checkin(Poolname, Worker),
+                    {ok, Value}
+            end
     end,
     run_in_pool(Poolname, Op).
 
 %% @doc
-%% Deletes the data associated with a certain key in the specified pool.
+%% Deletes the data associated with a certain key in the specified pool. This functions returns ok
+%% even if the key couldn't be found
 %% @end
 -spec delete(pool_name(), key()) -> ok | {error, term()}.
 delete(Poolname, Key) ->
     Op = fun() ->
             Worker = poolboy:checkout(Poolname),
-            gen_server:call(Worker, {delete, Key}),
-            poolboy:checkin(Poolname, Worker),
-            ok
+            case gen_server:call(Worker, {delete, Key}) of
+                {error, R} ->
+                    {error, {poolboy_error, R}};
+                _ ->
+                    poolboy:checkin(Poolname, Worker),
+                    ok
+            end
     end,
     run_in_pool(Poolname, Op).
 
@@ -132,11 +150,24 @@ delete(Poolname, Key) ->
 flush(Poolname) ->
     Op = fun() ->
             Worker = poolboy:checkout(Poolname),
-            Reply = gen_server:call(Worker, flush ),
-            poolboy:checkin(Poolname, Worker),
-            Reply
+            case gen_server:call(Worker, flush) of
+                {error, R} ->
+                    {error, {poolboy_error, R}};
+                _ ->
+                    poolboy:checkin(Poolname, Worker),
+                    ok
+            end
     end,
     run_in_pool(Poolname, Op).
+
+
+%% @doc
+%% Removes all the pools started via start_pool/6. This function is automatically called when this
+%% application is about to stop.
+-spec remove_all_pools() -> [{pool_name(), StopRes::ok | {error, term()}}].
+%% @end
+remove_all_pools() ->
+    gen_server:call(?MODULE, remove_all_pools).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -148,16 +179,16 @@ init([]) ->
                                     [protected, {read_concurrency, true}, named_table]),
     {ok, #state{pools=?MEMCACHE_POOLS_ETS}}.
 
--type call_type()::{start_pool, pool()} | {stop_pool, pool_name()} | term().
+-type call_type()::{start_pool, pool()} | {stop_pool, pool_name()} | remove_all_pools | term().
 -spec handle_call(call_type(), any(), #state{}) ->
     {reply, ok | {error, term()}, #state{}} | {noreply, #state{}}.
-handle_call({start_pool, {Poolname, Host, Port, Size, MaxOverflow}}, _From, State) ->
-    Res = case check_pool_availability(Poolname, Port) of
+handle_call({start_pool, {Poolname, Host, Port, Size, MaxOverflow, StartServer}}, _From, State) ->
+    Res = case check_pool_availability(Poolname, Port, StartServer) of
         ok ->
-            case memcache_pools_sup:add_pool(Poolname, Host, Port, Size, MaxOverflow) of
+            case memcache_pools_sup:add_pool(Poolname, Host, Port, Size, MaxOverflow, StartServer) of
                 {ok, _Pid} ->
                     true=ets:insert(?MEMCACHE_POOLS_ETS,
-                                    [{Poolname, Host, Port, Size, MaxOverflow}]),
+                                    [{Poolname, Host, Port, Size, MaxOverflow, StartServer}]),
                     ok;
                 {error, _}=E ->
                     E
@@ -168,9 +199,9 @@ handle_call({start_pool, {Poolname, Host, Port, Size, MaxOverflow}}, _From, Stat
 handle_call({stop_pool, Poolname}, _From, State) ->
     Res = case ets:lookup(?MEMCACHE_POOLS_ETS, Poolname) of
         [] ->
-            ok;
-        [{Poolname, Host, Port, _Size, _MaxOverflow}] ->
-            case memcache_pools_sup:remove_pool(Poolname, Host, Port) of
+            {error, pool_not_found};
+        [{Poolname, Host, Port, _Size, _MaxOverflow, StopServer}] ->
+            case memcache_pools_sup:remove_pool(Poolname, Host, Port, StopServer) of
                 ok ->
                     true = ets:delete(?MEMCACHE_POOLS_ETS, Poolname),
                     ok;
@@ -178,6 +209,13 @@ handle_call({stop_pool, Poolname}, _From, State) ->
                     E
             end
     end,
+    {reply, Res, State};
+handle_call(remove_all_pools, _From, State) ->
+    Res = lists:foldl(fun ({Poolname, Host, Port, _Size, _MaxOverflow, StopServer}, Acc) ->
+                    PoolRes=memcache_pools_sup:remove_pool(Poolname, Host, Port, StopServer),
+                    true = ets:delete(?MEMCACHE_POOLS_ETS, Poolname),
+                    [{Poolname, PoolRes}| Acc]
+            end, [], ets:tab2list(?MEMCACHE_POOLS_ETS)),
     {reply, Res, State};
 handle_call(_Request, _From, State) ->
     {noreply, State}.
@@ -209,17 +247,22 @@ run_in_pool(Poolname, Op) ->
         [_] -> Op()
     end.
 
--spec check_pool_availability(pool_name(), pool_port()) ->
+-spec check_pool_availability(pool_name(), pool_port(), boolean()) ->
     ok | {error, poolname_in_use | addr_in_use}.
-check_pool_availability(Poolname, Port) ->
+check_pool_availability(Poolname, Port, StartServer) ->
     case ets:lookup(?MEMCACHE_POOLS_ETS, Poolname) of
         [] ->
-            case gen_tcp:listen(Port, [binary, {reuseaddr, true}]) of
-                {ok, Sock} ->
-                    gen_tcp:close(Sock),
-                    ok;
-                {error, Reason} when Reason == eaddrinuse; Reason == econnrefused ->
-                    {error, addr_in_use}
+            case StartServer of
+                true ->
+                    case gen_tcp:listen(Port, [binary, {reuseaddr, true}]) of
+                        {ok, Sock} ->
+                            gen_tcp:close(Sock),
+                            ok;
+                        {error, Reason} when Reason == eaddrinuse; Reason == econnrefused ->
+                            {error, addr_in_use}
+                    end;
+                false ->
+                    ok
             end;
         [_] ->
             {error, poolname_in_use}

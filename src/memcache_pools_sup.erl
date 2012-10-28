@@ -2,14 +2,21 @@
 
 -behaviour(supervisor).
 
+-include_lib("erlanglibs/include/logging.hrl").
+
 %% API
--export([add_pool/5,
-         remove_pool/3,
-         start_link/0
+-export([add_pool/6,
+         remove_pool/4,
+         start_link/0,
+         start_pool/2
 ]).
 
 %% Supervisor callbacks
 -export([init/1]).
+
+-ifdef('TEST').
+-export([start_memcache/2, stop_memcache/2]).
+-endif.
 
 -define(CHILD(Id, Mod, Type, Args), {Id, {Mod, start_link, Args},
                                      permanent, 5000, Type, [Mod]}).
@@ -28,30 +35,44 @@ start_link() ->
 %% @doc
 %% Adds a pool to the list of children of this supervisor
 -spec add_pool(memcache:pool_name(), memcache:pool_host(), memcache:pool_port(),
-               memcache:pool_size(), memcache:pool_max_overflow()) -> {ok, pid()} | {error, term()}.
+               memcache:pool_size(), memcache:pool_max_overflow(), StartServer::boolean()) ->
+    {ok, pid()} | {error, term()}.
 %% @end
-add_pool(Poolname, Host, Port, Size, MaxOverflow) ->
-    case start_memcache(Host, Port) of
-        ok ->
-            ChildSpec = build_child_spec(Poolname, Host, Port, Size, MaxOverflow),
-            supervisor:start_child(?MODULE, ChildSpec);
-        {error, Reason} ->
-            {error, Reason}
-    end.
+add_pool(Poolname, Host, Port, Size, MaxOverflow, StartServer) ->
+    ChildSpec = build_child_spec(Poolname, Host, Port, Size, MaxOverflow, StartServer),
+    supervisor:start_child(?MODULE, ChildSpec).
 
 %% @doc
 %% Terminates a pool and removes its childspec from this supervisor
--spec remove_pool(memcache:pool_name(), memcache:pool_host(), memcache:pool_port()) -> ok | {error, term()}.
+-spec remove_pool(memcache:pool_name(), memcache:pool_host(), memcache:pool_port(),
+                  ServerManaged::boolean()) -> ok | {error, term()}.
 %% @end
-remove_pool(Poolname, Host, Port) ->
+remove_pool(Poolname, Host, Port, true) ->
     ok=stop_memcache(Host, Port),
-%    poolboy:stop(Poolname),
+    remove_pool(Poolname, Host, Port, false);
+remove_pool(Poolname, _Host, _Port, false) ->
     case supervisor:terminate_child(?MODULE, Poolname) of
         ok -> 
             ok = supervisor:delete_child(?MODULE, Poolname);
         {error, not_found} ->
             {error, not_found}
     end.
+
+%% @private
+%% @doc
+%% This functions wraps the poolboy call to start the pool of connections with the start_memcache/2
+%% call in order to start the server before if needed
+-spec start_pool({memcache:pool_host(), memcache:pool_port()} | undefined, [{atom(), term()}]) ->
+    {ok, pid()}.
+%% @end
+start_pool(StartServer, PoolboyOpts) ->
+    case StartServer of
+        {Host, Port} when is_list(Host), is_integer(Port) ->
+            start_memcache(Host, Port);
+        undefined ->
+            ok
+    end,
+    poolboy:start_link(PoolboyOpts).
 
 %%%===================================================================
 %%% Supervisor Callbacks
@@ -64,26 +85,27 @@ init([]) ->
 %%%===================================================================
 
 -spec build_child_spec(memcache:pool_name(), memcache:pool_host(), memcache:pool_port(),
-                       memcache:pool_size(), memcache:pool_max_overflow()) ->
+                       memcache:pool_size(), memcache:pool_max_overflow(), boolean()) ->
     supervisor:child_spec().
-build_child_spec(Poolname, Host, Port, Size, MaxOverflow) ->
-    {Poolname, {poolboy, start_link, [[{name, {local, Poolname}},
-                                       {worker_module, erlmc_conn},
-                                       {size, Size},
-                                       {max_overflow, MaxOverflow},
-                                       {host, Host},
-                                       {port, Port}]]},
-                permanent, 5000, worker, [poolboy]}.
+build_child_spec(Poolname, Host, Port, Size, MaxOverflow, StartServer) ->
+    StartServerOpts=case StartServer of
+        true -> {Host, Port};
+        false -> undefined
+    end,
+    PoolboyOpts = [{name, {local, Poolname}}, {worker_module, erlmc_conn}, {size, Size},
+                   {max_overflow, MaxOverflow}, {host, Host}, {port, Port}],
+    {Poolname, {?MODULE, start_pool, [StartServerOpts, PoolboyOpts]},
+     permanent, 5000, worker, [poolboy]}.
 
 -spec start_memcache(memcache:pool_host(), memcache:pool_port()) -> ok | {error, term()}.
 start_memcache(Host, Port) ->
     Cmd=elibs_string:format("memcached -d -l ~s -m 64 -p ~p", [Host, Port]),
-    io:format("'~s'~n", [Cmd]),
     case os:cmd(Cmd) of
         [] ->
             timer:sleep(500),
             ok;
         Other ->
+            ?WARNING("Unexpected return starting memcached ~p: ~p", [{Host, Port}, Other]),
             {error, Other}
     end.
 
@@ -93,10 +115,11 @@ stop_memcache(Host, Port) ->
             "kill -9 $(ps aux | grep memcached | grep ~s | grep ~p | awk '{print $2}')",
             [Host, Port]
         ),
-    io:format("'~s'~n", [Cmd]),
     case os:cmd(Cmd) of
         [] -> ok;
-        Other -> {error, Other}
+        Other ->
+            ?WARNING("Unexpected return stoping memcached ~p: ~p", [{Host, Port}, Other]),
+            {error, Other}
     end.
 
 
