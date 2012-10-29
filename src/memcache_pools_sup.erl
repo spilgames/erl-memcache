@@ -1,3 +1,6 @@
+%% @doc
+%% Supervises the pools and memcached instances managed by the application, restarting them in case
+%% of failure with a one for one strategy
 -module(memcache_pools_sup).
 
 -behaviour(supervisor).
@@ -52,7 +55,7 @@ remove_pool(Poolname, Host, Port, true) ->
     remove_pool(Poolname, Host, Port, false);
 remove_pool(Poolname, _Host, _Port, false) ->
     case supervisor:terminate_child(?MODULE, Poolname) of
-        ok -> 
+        ok ->
             ok = supervisor:delete_child(?MODULE, Poolname);
         {error, not_found} ->
             {error, not_found}
@@ -68,8 +71,10 @@ remove_pool(Poolname, _Host, _Port, false) ->
 start_pool(StartServer, PoolboyOpts) ->
     case StartServer of
         {Host, Port} when is_list(Host), is_integer(Port) ->
+            ?INFO("Starting memcache pool and memcached server at ~p", [{Host, Port}]),
             start_memcache(Host, Port);
         undefined ->
+            ?INFO("Starting memcache pool", []),
             ok
     end,
     poolboy:start_link(PoolboyOpts).
@@ -77,6 +82,8 @@ start_pool(StartServer, PoolboyOpts) ->
 %%%===================================================================
 %%% Supervisor Callbacks
 %%%===================================================================
+
+%% @private
 init([]) ->
     {ok, {{one_for_one, 5, 10}, []}}.
 
@@ -102,7 +109,7 @@ start_memcache(Host, Port) ->
     Cmd=elibs_string:format("memcached -d -l ~s -m 64 -p ~p", [Host, Port]),
     case os:cmd(Cmd) of
         [] ->
-            timer:sleep(500),
+            timer:sleep(100),
             ok;
         Other ->
             ?WARNING("Unexpected return starting memcached ~p: ~p", [{Host, Port}, Other]),
@@ -121,5 +128,4 @@ stop_memcache(Host, Port) ->
             ?WARNING("Unexpected return stoping memcached ~p: ~p", [{Host, Port}, Other]),
             {error, Other}
     end.
-
 

@@ -1,6 +1,10 @@
+%% @doc
+%% This module acts as entry point for the application.
 -module(memcache).
 
 -behaviour(gen_server).
+
+-include_lib("erlanglibs/include/logging.hrl").
 
 -define(DEFAULT_EXPIRATION_TIME, 3600).
 -define(MEMCACHE_POOLS_ETS, memcache_pools).
@@ -173,12 +177,14 @@ remove_all_pools() ->
 %%% gen_server callbacks
 %%%===================================================================
 
+%% @private
 -spec init([]) -> {ok, #state{}}.
 init([]) ->
     ?MEMCACHE_POOLS_ETS=ets:new(?MEMCACHE_POOLS_ETS,
                                     [protected, {read_concurrency, true}, named_table]),
     {ok, #state{pools=?MEMCACHE_POOLS_ETS}}.
 
+%% @private
 -type call_type()::{start_pool, pool()} | {stop_pool, pool_name()} | remove_all_pools | term().
 -spec handle_call(call_type(), any(), #state{}) ->
     {reply, ok | {error, term()}, #state{}} | {noreply, #state{}}.
@@ -220,18 +226,22 @@ handle_call(remove_all_pools, _From, State) ->
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
+%% @private
 -spec handle_cast(any(), #state{}) -> {noreply, #state{}}.
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+%% @private
 -spec handle_info(any(), #state{}) -> {noreply, #state{}}.
 handle_info(_Info, State) ->
     {noreply, State}.
 
+%% @private
 -spec terminate(any(), #state{}) -> ok.
 terminate(_Reason, _State) ->
     ok.
 
+%% @private
 -spec code_change(any(), #state{}, any()) -> {ok, #state{}}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -240,11 +250,17 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
--spec run_in_pool(pool_name(), fun (() -> term())) -> term() | {error, pool_not_found}.
+-spec run_in_pool(pool_name(), fun (() -> term())) -> term() | {error, pool_not_found | term()}.
 run_in_pool(Poolname, Op) ->
     case ets:lookup(?MEMCACHE_POOLS_ETS, Poolname) of
         [] -> {error, pool_not_found};
-        [_] -> Op()
+        [_] ->
+            try
+                Op()
+            catch
+                _:Reason ->
+                    {error, {poolboy_error, Reason}}
+            end
     end.
 
 -spec check_pool_availability(pool_name(), pool_port(), boolean()) ->

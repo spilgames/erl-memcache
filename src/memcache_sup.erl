@@ -1,3 +1,6 @@
+%% @doc
+%% The main application supervisor. It manages both the memcache gen_server and the pools
+%% supervisor with a one for all strategy.
 -module(memcache_sup).
 
 -behaviour(supervisor).

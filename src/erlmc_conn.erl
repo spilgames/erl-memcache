@@ -1,4 +1,4 @@
-%% Copyright (c) 2009 
+%% Copyright (c) 2009
 %% Jacob Vorreuter <jacob.vorreuter@gmail.com>
 %%
 %% Permission is hereby granted, free of charge, to any person
@@ -23,7 +23,7 @@
 %% OTHER DEALINGS IN THE SOFTWARE.
 %%
 %% http://code.google.com/p/memcached/wiki/MemcacheBinaryProtocol
-%% 
+%%
 %% @author Jacob Vorreuter
 %% @author Bart van Deenen
 %% @author Enrique Paz
@@ -42,7 +42,7 @@
 -behaviour(gen_server).
 
 %% gen_server callbacks
--export([start_link/1, init/1, handle_call/3, handle_cast/2, 
+-export([start_link/1, init/1, handle_call/3, handle_cast/2,
 	     handle_info/2, terminate/2, code_change/3]).
 
 %% Op codes
@@ -96,7 +96,7 @@
 %% @doc start the memcache worker.
 %% you can use the memcache pool properties to set non default parameters
 %% @see memcache:init/1
--spec start_link([{term(), term()}]) -> {ok, pid()} | ignore | {error, term()} . 
+-spec start_link([{term(), term()}]) -> {ok, pid()} | ignore | {error, term()} .
 start_link(Args) ->
 	Host = proplists:get_value( host, Args),
 	Port = proplists:get_value( port, Args),
@@ -111,10 +111,10 @@ start_link(Args) ->
     | {add, memcache:key(), memcache:value(), memcache:expiration()}
     | {set, memcache:key(), memcache:value(), memcache:expiration()}
     | {replace, memcache:key(), memcache:value(), memcache:expiration()}
-    | {delete, memcache:key()} 
+    | {delete, memcache:key()}
     | {increment, memcache:key(), memcache:value(), memcache:value(), memcache:expiration()}
     | {increment, memcache:key(), memcache:value(), memcache:value(), memcache:expiration()}
-    | {append, memcache:key(), memcache:value()} | {prepend, memcache:key(), memcache:value()} 
+    | {append, memcache:key(), memcache:value()} | {prepend, memcache:key(), memcache:value()}
     | stats | flush | {flush, memcache:expiration()} | quit | version | any().
 
 
@@ -122,15 +122,15 @@ start_link(Args) ->
 -spec init({Host::string(), Port::pos_integer()}) -> {ok, state()} | {stop, Error::term()}.
 init({Host, Port}) ->
 	case gen_tcp:connect(Host, Port, [binary, {packet, 0}, {active, false}]) of
-        {ok, Socket} -> 
+        {ok, Socket} ->
 			{ok, Socket};
-        Error -> 
+        Error ->
 			{stop,Error}
     end.
 
 %% @private
 -spec handle_call(call_type(), {pid(), Tag::term()}, state()) ->
-    {reply, memcache:value(), state()} | {stop, term(), {error, term(), state()}} 
+    {reply, memcache:value(), state()} | {stop, term(), {error, term(), state()}}
     | {noreply, state()}.
 
 handle_call({get, K}, _From, Socket) ->
@@ -152,10 +152,10 @@ handle_call({add, K, Value, Expiration}, _From, Socket) ->
 		Resp ->
     		{reply, Resp#response.value, Socket}
 	end;
-    
+
 handle_call({set, K, Value, Expiration}, _From, Socket) ->
 	Key = key_to_binary(K),
-	case send_recv(Socket, #request{op_code=?OP_Set, 
+	case send_recv(Socket, #request{op_code=?OP_Set,
                                     extras = <<16#deadbeef:32, Expiration:32>>,
                                     key=Key, value=Value}) of
 		{error, Err} ->
@@ -186,15 +186,15 @@ handle_call({delete, K}, _From, Socket) ->
 
 handle_call({increment, K, Value, Initial, Expiration}, _From, Socket) ->
 	Key = key_to_binary(K),
-	case send_recv(Socket, #request{op_code=?OP_Increment, 
-                                    extras = <<Value:64, Initial:64, Expiration:32>>, 
+	case send_recv(Socket, #request{op_code=?OP_Increment,
+                                    extras = <<Value:64, Initial:64, Expiration:32>>,
                                     key=Key}) of
 		{error, Err} ->
 			{stop, Err, {error, Err}, Socket};
 		Resp ->
     		{reply, Resp#response.value, Socket}
 	end;
-	
+
 handle_call({decrement, K, Value, Initial, Expiration}, _From, Socket) ->
 	Key = key_to_binary(K),
 	case send_recv(Socket, #request{op_code=?OP_Decrement,
@@ -223,7 +223,7 @@ handle_call({prepend, K, Value}, _From, Socket) ->
 		Resp ->
     		{reply, Resp#response.value, Socket}
 	end;
-	
+
 handle_call(stats, _From, Socket) ->
 	send(Socket, #request{op_code=?OP_Stat}),
     case collect_stats_from_socket(Socket) of
@@ -240,7 +240,7 @@ handle_call(flush, _From, Socket) ->
 		Resp ->
     		{reply, Resp#response.value, Socket}
 	end;
-        
+
 handle_call({flush, Expiration}, _From, Socket) ->
 	case send_recv(Socket, #request{op_code=?OP_Flush, extras = <<Expiration:32>>}) of
 		{error, Err} ->
@@ -248,12 +248,12 @@ handle_call({flush, Expiration}, _From, Socket) ->
 		Resp ->
     		{reply, Resp#response.value, Socket}
 	end;
-    
+
 handle_call(quit, _From, Socket) ->
 	send_recv(Socket, #request{op_code=?OP_Quit}),
 	gen_tcp:close(Socket),
     {stop, normal, undefined};
-    
+
 handle_call(version, _From, Socket) ->
 	case send_recv(Socket, #request{op_code=?OP_Version}) of
 		{error, Err} ->
@@ -261,7 +261,7 @@ handle_call(version, _From, Socket) ->
 		Resp ->
     		{reply, Resp#response.value, Socket}
 	end;
-	
+
 handle_call(_, _From, Socket) -> {reply, {error, invalid_call}, Socket}.
 
 %% @private
@@ -270,12 +270,12 @@ handle_cast(_, State) -> {noreply, State}.
 
 %% @private
 -spec handle_info(any(), state()) -> {noreply, state()}.
-handle_info(_Info, State) -> 
+handle_info(_Info, State) ->
     {noreply, State}.
 
 %% @private
 -spec terminate(any, state()) -> ok.
-terminate(_Reason, Socket) -> 
+terminate(_Reason, Socket) ->
 	case is_port(Socket) of
 		true -> gen_tcp:close(Socket);
 		false -> ok
@@ -287,17 +287,17 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 %%--------------------------------------------------------------------
 %%% Internal functions
-%%--------------------------------------------------------------------     
+%%--------------------------------------------------------------------
 
 -spec collect_stats_from_socket(port()) -> [{atom(), list()}] | {error, term()}.
 collect_stats_from_socket(Socket) ->
     collect_stats_from_socket(Socket, []).
-   
+
 -spec collect_stats_from_socket(port(), [{atom(), list()}]) ->
     [{atom(), list()}] | {error, term()}.
 collect_stats_from_socket(Socket, Acc) ->
     case recv(Socket) of
-		{error, Err} -> 
+		{error, Err} ->
 			{error, Err};
         #response{body_size=0} ->
             Acc;
@@ -343,20 +343,20 @@ encode_request(Request) when is_record(Request, request) ->
 -spec recv_header(port()) -> {error, term()} | #response{}.
 recv_header(Socket) ->
     decode_response_header(recv_bytes(Socket, 24)).
-  
+
 -spec recv_body(port(), #response{}) -> {error, term()} | #response{}.
 recv_body(Socket, #response{key_size = KeySize, extras_size = ExtrasSize, body_size = BodySize}=Resp) ->
     decode_response_body(recv_bytes(Socket, BodySize), ExtrasSize, KeySize, Resp).
-    
+
 -spec decode_response_header({error, term()} | binary()) -> {error, term()} | #response{}.
 decode_response_header({error, Err}) -> {error, Err};
 decode_response_header(<<16#81:8, Opcode:8, KeySize:16, ExtrasSize:8, DataType:8, Status:16, BodySize:32, Opaque:32, CAS:64>>) ->
     #response{
-        op_code = Opcode, 
-        data_type = DataType, 
-        status = Status, 
-        opaque = Opaque, 
-        cas = CAS, 
+        op_code = Opcode,
+        data_type = DataType,
+        status = Status,
+        opaque = Opaque,
+        cas = CAS,
         key_size = KeySize,
         extras_size = ExtrasSize,
         body_size = BodySize
