@@ -1,0 +1,15 @@
+Current version: 1.0.0
+    OPT Added forgotten test module
+    OPT Error handling improved when a pool dies
+    CHANGE emptied just before updating the newest version
+    NEW First fully functional version
+    FIX dialyzer passing
+    NEW Initial version
+
+tag: 0.1.0
+    FIX configs
+    NEW more tests
+    NEW added tests
+    FIX erlanglibs version
+    CHANGE Added config and runner scripts.
+    FIX dependencies poolboy and erlanglibs
