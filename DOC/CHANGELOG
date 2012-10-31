@@ -1,4 +1,7 @@
-Current version: 1.0.3
+Current version: 1.0.4
+    FIX graceful poolboy shutdown
+
+tag: 1.0.3
     DOC added overview.edoc
     OPT poolboy dependency updated
 
