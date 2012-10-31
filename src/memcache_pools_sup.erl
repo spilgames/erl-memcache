@@ -54,6 +54,7 @@ remove_pool(Poolname, Host, Port, true) ->
     ok=stop_memcache(Host, Port),
     remove_pool(Poolname, Host, Port, false);
 remove_pool(Poolname, _Host, _Port, false) ->
+    poolboy:stop(Poolname),
     case supervisor:terminate_child(?MODULE, Poolname) of
         ok ->
             ok = supervisor:delete_child(?MODULE, Poolname);
@@ -102,7 +103,7 @@ build_child_spec(Poolname, Host, Port, Size, MaxOverflow, StartServer) ->
     PoolboyOpts = [{name, {local, Poolname}}, {worker_module, erlmc_conn}, {size, Size},
                    {max_overflow, MaxOverflow}, {host, Host}, {port, Port}],
     {Poolname, {?MODULE, start_pool, [StartServerOpts, PoolboyOpts]},
-     permanent, 5000, worker, [poolboy]}.
+     transient, 5000, worker, [poolboy]}.
 
 -spec start_memcache(memcache:pool_host(), memcache:pool_port()) -> ok | {error, term()}.
 start_memcache(Host, Port) ->

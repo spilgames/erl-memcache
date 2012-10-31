@@ -274,7 +274,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 %% @private
--spec terminate(any, state()) -> ok.
+-spec terminate(any(), state()) -> ok.
 terminate(_Reason, Socket) ->
 	case is_port(Socket) of
 		true -> gen_tcp:close(Socket);
