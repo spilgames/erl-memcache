@@ -1,0 +1,8 @@
+@author The Glados team
+@title Erl Memcache
+@doc This application is able to start/stop memcached instances in the host where it runs and also offer
+configurable connection pools to interact with those instances or others that may be running
+(locally or remotely).
+At the moment, local memcached instances are started and stopped via os commands.
+This application uses no configuration.
+
