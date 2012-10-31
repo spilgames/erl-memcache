@@ -1,4 +1,8 @@
-Current version: 1.0.2
+Current version: 1.0.3
+    DOC added overview.edoc
+    OPT poolboy dependency updated
+
+tag: 1.0.2
     FIX poolboy version verified in rebar.config
 
 tag: 1.0.1
