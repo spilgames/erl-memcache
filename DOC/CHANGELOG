@@ -1,4 +1,7 @@
-Current version: 1.0.1
+Current version: 1.0.2
+    FIX poolboy version verified in rebar.config
+
+tag: 1.0.1
     FIX supervisor report when stopping a pool
 
 tag: 1.0.0
