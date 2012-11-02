@@ -128,6 +128,15 @@ with_started_memcached_test_() ->
                     end)
         end}.
 
+port_verification_test_() ->
+    {setup, fun setup/0, fun cleanup/1, fun (_) ->
+                ?_test(begin
+                        ok=memcache:start_pool(testpool, "localhost", 3333, 10, 10, true),
+                        ok=memcache:verify_port(3334, 1, 100),
+                        {error, addr_in_use}=memcache:verify_port(3333, 3, 100)
+                    end)
+        end}.
+
 single_pool_restart_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun (_) ->
                 {timeout, 10, [?_test(begin
@@ -135,25 +144,8 @@ single_pool_restart_test_() ->
                                     ?assertMatch(ok, memcache:start_pool(testpool, "localhost",
                                                                          3333, 10, 10, true)),
                                     ?assertMatch(ok, memcache:stop_pool(testpool))
-                            end, lists:seq(1, 10))
+                            end, lists:seq(1, 20))
                     end)]}
-        end}.
-
-pool_sharing_when_start_required_test_() ->
-    {setup, fun setup/0, fun (_) -> kill_memcached_instances() end,
-     fun (_) ->
-                ?_test(begin
-                        ok=memcache:start_pool(testpool, "localhost", 3333, 10, 10, true),
-                        ?assertEqual(ok, memcache:start_pool(testpool2, "localhost",
-                                                             3333, 10, 10, true)),
-                        ?assertEqual(ok, memcache:stop_pool(testpool2)),
-                        % Stopping the testpool2 triggers a memcached server restart. Waiting a bit
-                        % for it to happen
-                        ?assertMatch({error, {poolboy_error, _}}, memcache:get(testpool, any)),
-                        timer:sleep(500),
-                        ?assertEqual({ok, <<>>}, memcache:get(testpool, key)),
-                        ?assertEqual(ok, memcache:stop_pool(testpool))
-                    end)
         end}.
 
 %%================================================================================================
@@ -162,7 +154,7 @@ pool_sharing_when_start_required_test_() ->
 
 setup() ->
     error_logger:tty(false),
-    {ok, F} = elibs_application:start(memcache),
+    {ok, F} = memcache:start(),
     [F].
 
 cleanup(L) ->

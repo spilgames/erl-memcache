@@ -8,6 +8,8 @@
 
 -define(DEFAULT_EXPIRATION_TIME, 3600).
 -define(MEMCACHE_POOLS_ETS, memcache_pools).
+-define(MAX_PORT_RETRIES, 5).
+-define(PORT_RETRY_INTERVAL, 200).
 
 %% API
 -export([delete/2,
@@ -40,7 +42,7 @@
 
 %% exports for testing
 -ifdef('TEST').
--export([get_cache_map/0]).
+-export([verify_port/3]).
 -endif.
 
 -record(state,  {pools::ets:tab()}). %  The ets entries are instances of pool()
@@ -75,10 +77,6 @@ start_link() ->
 %% server as well. If it was already started, just returns ok. Note that the start server
 %% functionality will only work for starting local memcached instances, so Host should be a
 %% valid name for localhost or an IP address for one of the local network interfaces.
-%% If required to start the memcached server but a memcached server belonging to the same user
-%% is found in the specified address (using a different poolname), this method will return ok.
-%% Beware in this case stopping any of the pools will force a memcached restart and the server will
-%% be flushed.
 -spec start_pool(pool_name(), pool_host(), pool_port(),
                  pool_size(), pool_max_overflow(), boolean()) -> ok | {error, term()}.
 %% @end
@@ -182,13 +180,6 @@ flush(Poolname) ->
 remove_all_pools() ->
     gen_server:call(?MODULE, remove_all_pools).
 
-%% @doc
-%% Returns the name of the ets used as cache map
--spec get_cache_map() -> ets:tab().
-%% @end
-get_cache_map() ->
-    gen_server:call(?MODULE, get_cache_map).
-
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -202,7 +193,7 @@ init([]) ->
 
 %% @private
 -type call_type()::{start_pool, pool()} | {stop_pool, pool_name()} | remove_all_pools
-    | get_cache_map | term().
+    | term().
 -spec handle_call(call_type(), any(), #state{}) ->
     {reply, ok | {error, term()}, #state{}} | {noreply, #state{}}.
 handle_call({start_pool, {Poolname, Host, Port, Size, MaxOverflow, StartServer}}, _From, State) ->
@@ -241,8 +232,6 @@ handle_call(remove_all_pools, _From, State) ->
                     [{Poolname, PoolRes}| Acc]
             end, [], ets:tab2list(?MEMCACHE_POOLS_ETS)),
     {reply, Res, State};
-handle_call(get_cache_map, _From, #state{pools=CacheMap}=State) ->
-    {reply, CacheMap, State};
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
@@ -290,29 +279,25 @@ check_pool_availability(Poolname, Port, StartServer) ->
     case ets:lookup(?MEMCACHE_POOLS_ETS, Poolname) of
         [] ->
             case StartServer of
-                true ->
-                    case gen_tcp:listen(Port, [binary, {reuseaddr, true}]) of
-                        {ok, Sock} ->
-                            gen_tcp:close(Sock),
-                            ok;
-                        {error, eaddrinuse} ->
-                            try_reusing_port(Port);
-                        {error, Reason} ->
-                            {error, {socket_error, Reason}}
-                    end;
-                false ->
-                    ok
+                true -> verify_port(Port, ?MAX_PORT_RETRIES, ?PORT_RETRY_INTERVAL);
+                false -> ok
             end;
         [_] ->
             {error, poolname_in_use}
     end.
 
--spec try_reusing_port(pool_port()) -> ok | {error, addr_in_use}.
-try_reusing_port(Port) ->
-    Whoami=os:cmd("whoami"),
-    Cmd = elibs_string:format("ps aux | grep memcached | grep ~p | awk '{print $1}'", [Port]),
-    case os:cmd(Cmd) of
-        Whoami -> ok;
-        _ -> {error, addr_in_use}
+-spec verify_port(pool_port(), non_neg_integer(), pos_integer()) -> ok | {error, term()}.
+verify_port(_Port, 0, _) ->
+    {error, addr_in_use};
+verify_port(Port, Retries, RetryInterval) ->
+    case gen_tcp:listen(Port, [binary, {reuseaddr, true}]) of
+        {ok, Sock} ->
+            gen_tcp:close(Sock),
+            ok;
+        {error, eaddrinuse} ->
+            timer:sleep(RetryInterval),
+            verify_port(Port, Retries - 1, RetryInterval);
+        {error, Reason} ->
+            {error, {socket_error, Reason}}
     end.
 
