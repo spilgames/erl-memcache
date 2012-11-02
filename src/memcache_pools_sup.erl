@@ -124,7 +124,9 @@ stop_memcache(Host, Port) ->
             [Host, Port]
         ),
     case os:cmd(Cmd) of
-        [] -> ok;
+        [] ->
+            timer:sleep(100),
+            ok;
         Other ->
             ?WARNING("Unexpected return stoping memcached ~p: ~p", [{Host, Port}, Other]),
             {error, Other}

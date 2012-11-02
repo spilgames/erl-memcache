@@ -137,7 +137,7 @@ single_pool_restart_test_() ->
                                     ?assertMatch(ok, memcache:start_pool(testpool, "localhost",
                                                                          3333, 10, 10, true)),
                                     ?assertMatch(ok, memcache:stop_pool(testpool))
-                            end, lists:seq(1, 20))
+                            end, lists:seq(1, 10))
                     end)
         end}.
 
