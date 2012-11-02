@@ -17,11 +17,10 @@ SHELL := /bin/bash
 
 # First target so we can run without explicit targets
 # inherits from common Makefile, but runs first
-all::       update 
+all::       update
 # getdeps for deployar and setup for ci
 setup::		update
 getdeps::   update
-
 
 ############################
 #    DO NOT EDIT BELOW     #
