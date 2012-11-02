@@ -270,12 +270,9 @@ check_pool_availability(Poolname, Port, StartServer) ->
         [] ->
             case StartServer of
                 true ->
-                    case gen_tcp:listen(Port, [binary, {reuseaddr, true}]) of
-                        {ok, Sock} ->
-                            gen_tcp:close(Sock),
-                            ok;
-                        {error, Reason} when Reason == eaddrinuse; Reason == econnrefused ->
-                            {error, addr_in_use}
+                    case lists:member(Port, get_used_local_ports()) of
+                        true -> {error, addr_in_use};
+                        false -> ok
                     end;
                 false ->
                     ok
@@ -284,3 +281,12 @@ check_pool_availability(Poolname, Port, StartServer) ->
             {error, poolname_in_use}
     end.
 
+-spec get_used_local_ports() -> [pos_integer()].
+get_used_local_ports() ->
+    OpenTcpConn = lists:filter(fun ({_ , ConnInfo}) ->
+                    proplists:get_value(name, ConnInfo) == "tcp_inet"
+            end, [{P, erlang:port_info(P)} || P <- erlang:ports()]),
+    lists:map(fun ({Conn, _}) ->
+                {ok, {_Addr, Port}} = inet:peername(Conn),
+                Port
+        end, OpenTcpConn).
