@@ -139,7 +139,7 @@ port_verification_test_() ->
 
 single_pool_restart_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun (_) ->
-                {timeout, 10, [?_test(begin
+                {timeout, 30, [?_test(begin
                         lists:foreach(fun (_) ->
                                     ?assertMatch(ok, memcache:start_pool(testpool, "localhost",
                                                                          3333, 10, 10, true)),
