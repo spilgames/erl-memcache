@@ -132,8 +132,11 @@ port_verification_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun (_) ->
                 ?_test(begin
                         ok=memcache:start_pool(testpool, "localhost", 3333, 10, 10, true),
-                        ok=memcache:verify_port(3334, 1, 100),
-                        {error, addr_in_use}=memcache:verify_port(3333, 3, 100)
+                        ResOk=memcache_pools_sup:wait_for_memcache("localhost", 3333, 1, 100),
+                        ResError=memcache_pools_sup:wait_for_memcache("localhost", 3334, 3, 100),
+                        ?assertEqual(ok, ResOk),
+                        ?assertMatch({error, {unable_to_connect_to_memcached, _, _}},
+                                     ResError)
                     end)
         end}.
 

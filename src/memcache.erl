@@ -8,8 +8,6 @@
 
 -define(DEFAULT_EXPIRATION_TIME, 3600).
 -define(MEMCACHE_POOLS_ETS, memcache_pools).
--define(MAX_PORT_RETRIES, 5).
--define(PORT_RETRY_INTERVAL, 200).
 
 %% API
 -export([delete/2,
@@ -39,11 +37,6 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
-
-%% exports for testing
--ifdef('TEST').
--export([verify_port/3]).
--endif.
 
 -record(state,  {pools::ets:tab()}). %  The ets entries are instances of pool()
 
@@ -197,7 +190,7 @@ init([]) ->
 -spec handle_call(call_type(), any(), #state{}) ->
     {reply, ok | {error, term()}, #state{}} | {noreply, #state{}}.
 handle_call({start_pool, {Poolname, Host, Port, Size, MaxOverflow, StartServer}}, _From, State) ->
-    Res = case check_pool_availability(Poolname, Port, StartServer) of
+    Res = case check_pool_availability(Poolname) of
         ok ->
             case memcache_pools_sup:add_pool(Poolname, Host, Port,
                                              Size, MaxOverflow, StartServer) of
@@ -272,32 +265,13 @@ run_in_pool(Poolname, Op) ->
             end
     end.
 
--spec check_pool_availability(pool_name(), pool_port(), boolean()) ->
-    ok | {error, poolname_in_use
-    | addr_in_use | {socket_error, term()}}.
-check_pool_availability(Poolname, Port, StartServer) ->
+-spec check_pool_availability(pool_name()) ->
+    ok | {error, poolname_in_use}.
+check_pool_availability(Poolname) ->
     case ets:lookup(?MEMCACHE_POOLS_ETS, Poolname) of
-        [] ->
-            case StartServer of
-                true -> verify_port(Port, ?MAX_PORT_RETRIES, ?PORT_RETRY_INTERVAL);
-                false -> ok
-            end;
-        [_] ->
-            {error, poolname_in_use}
+        [] -> ok;
+        [_] -> {error, poolname_in_use}
     end.
 
--spec verify_port(pool_port(), non_neg_integer(), pos_integer()) -> ok | {error, term()}.
-verify_port(_Port, 0, _) ->
-    {error, addr_in_use};
-verify_port(Port, Retries, RetryInterval) ->
-    case gen_tcp:listen(Port, [binary, {reuseaddr, true}]) of
-        {ok, Sock} ->
-            gen_tcp:close(Sock),
-            ok;
-        {error, eaddrinuse} ->
-            timer:sleep(RetryInterval),
-            verify_port(Port, Retries - 1, RetryInterval);
-        {error, Reason} ->
-            {error, {socket_error, Reason}}
-    end.
+
 
