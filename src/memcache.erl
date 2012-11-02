@@ -286,7 +286,9 @@ get_used_local_ports() ->
     OpenTcpConn = lists:filter(fun ({_ , ConnInfo}) ->
                     proplists:get_value(name, ConnInfo) == "tcp_inet"
             end, [{P, erlang:port_info(P)} || P <- erlang:ports()]),
-    lists:map(fun ({Conn, _}) ->
-                {ok, {_Addr, Port}} = inet:peername(Conn),
-                Port
-        end, OpenTcpConn).
+    lists:foldl(fun ({Conn, _}, Acc) ->
+                case inet:peername(Conn) of
+                    {ok, {_Addr, Port}} -> [Port | Acc];
+                    {error, enotconn} -> Acc
+                end
+        end, [], OpenTcpConn).
