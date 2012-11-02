@@ -1,4 +1,6 @@
-Current version: 1.0.5
+Current version: 1.0.6
+
+tag: 1.0.5
     FIX Another attempt to improve behaviour on CI
     FIX Attempt to fix socket reuse issue on jenkins
     OPT Added unit test for single pool restart
