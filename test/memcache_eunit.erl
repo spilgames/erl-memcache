@@ -23,7 +23,6 @@ single_pool_operation_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun (_) ->
                 StartPoolRes=memcache:start_pool(testpool, "localhost", 3333, 10, 10, true),
                 StartPoolSameName=memcache:start_pool(testpool, "localhost", 3334, 10, 10, true),
-                StartPoolSameAddr=memcache:start_pool(testpool2, "localhost", 3333, 10, 10, true),
                 PoolNotFoundOp=memcache:get(unknownpool, <<"key">>),
                 EmptyGet=memcache:get(testpool, <<"key">>),
                 EmptyGet2=memcache:get(testpool, key),
@@ -43,7 +42,6 @@ single_pool_operation_test_() ->
                 StopPoolNotStarted=memcache:stop_pool(testpool2),
                 [?_assertEqual(ok, StartPoolRes),
                  ?_assertEqual({error, poolname_in_use}, StartPoolSameName),
-                 ?_assertEqual({error, addr_in_use}, StartPoolSameAddr),
                  ?_assertEqual({error, pool_not_found}, PoolNotFoundOp),
                  ?_assertEqual({ok, <<>>}, EmptyGet),
                  ?_assertEqual({ok, <<>>}, EmptyGet2),
@@ -139,6 +137,23 @@ single_pool_restart_test_() ->
                                     ?assertMatch(ok, memcache:stop_pool(testpool))
                             end, lists:seq(1, 10))
                     end)]}
+        end}.
+
+pool_sharing_when_start_required_test_() ->
+    {setup, fun setup/0, fun (_) -> kill_memcached_instances() end,
+     fun (_) ->
+                ?_test(begin
+                        ok=memcache:start_pool(testpool, "localhost", 3333, 10, 10, true),
+                        ?assertEqual(ok, memcache:start_pool(testpool2, "localhost",
+                                                             3333, 10, 10, true)),
+                        ?assertEqual(ok, memcache:stop_pool(testpool2)),
+                        % Stopping the testpool2 triggers a memcached server restart. Waiting a bit
+                        % for it to happen
+                        ?assertMatch({error, {poolboy_error, _}}, memcache:get(testpool, any)),
+                        timer:sleep(500),
+                        ?assertEqual({ok, <<>>}, memcache:get(testpool, key)),
+                        ?assertEqual(ok, memcache:stop_pool(testpool))
+                    end)
         end}.
 
 %%================================================================================================
