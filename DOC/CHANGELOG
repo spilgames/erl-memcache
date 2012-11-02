@@ -1,4 +1,9 @@
-Current version: 1.0.6
+Current version: 1.0.7
+    CHANGE shared pools functionality rolled back
+    NEW Allowing pools sharing address
+    FIX added error handling for race condition in closing sock
+
+tag: 1.0.6
 
 tag: 1.0.5
     FIX Another attempt to improve behaviour on CI
