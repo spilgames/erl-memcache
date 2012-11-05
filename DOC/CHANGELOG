@@ -1,4 +1,8 @@
-Current version: 1.0.8
+Current version: 1.0.9
+    OPT Improved a testcase with a retry mechanism
+    OPT memcached availability verification
+
+tag: 1.0.8
     OPT timeout increased for one test
     FIX some extra time given to memcached to die after kill -9
 
