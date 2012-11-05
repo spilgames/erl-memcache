@@ -114,8 +114,7 @@ pools_get_restarted_by_sup_test_() ->
                         % get call to a killed memcached to trigger the child restart and wait a bit
                         % for it to happen
                         ?assertMatch({error, {poolboy_error, _}}, memcache:get(testpool, any)),
-                        timer:sleep(500),
-                        ?assertEqual({ok, <<>>}, memcache:get(testpool, any))
+                        ?assertEqual({ok, <<>>}, retry_get(testpool, any, 200, 10))
                     end)
         end}.
 
@@ -167,4 +166,17 @@ cleanup(L) ->
 kill_memcached_instances() ->
     memcache_pools_sup:stop_memcache("localhost", 3333),
     memcache_pools_sup:stop_memcache("localhost", 3334).
+
+retry_get(Pool, Key, _Interval, 0) ->
+    memcache:get(Pool, Key);
+retry_get(Pool, Key, Interval, Retries) ->
+    case memcache:get(Pool, Key) of
+        {ok, _}=Ok ->
+            Ok;
+        {error, {poolboy_error, _}} ->
+            ?debugFmt("Retrying get(~p, ~p). ~p retries left with ~p ms interval",
+                      [Pool, Key, Retries - 1, Interval]),
+            timer:sleep(Interval),
+            retry_get(Pool, Key, Interval, Retries - 1)
+    end.
 
