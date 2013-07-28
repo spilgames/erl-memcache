@@ -150,6 +150,31 @@ single_pool_restart_test_() ->
                     end)]}
         end}.
 
+env_test_() ->
+    {setup,
+        fun () ->
+                {ok, F1} = elibs_application:set_env(memcache, pools,
+                    [{testpool, [
+                                {size, 10},
+                                {max_overflow, 20},
+                                {port, 3333},
+                                {host, "localhost"},
+                                {start_server, true}
+                            ]
+                        }
+                    ]),
+                [F1] ++ setup()
+        end,
+        fun cleanup/1,
+        [
+            ?_assertEqual(
+                ok,
+                memcache_pools_sup:wait_for_memcache("localhost", 3333, 1, 100)
+            )
+        ]
+    }.
+
+
 %%================================================================================================
 %% Internal functions
 %%================================================================================================
