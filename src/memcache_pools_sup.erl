@@ -86,7 +86,21 @@ start_pool({already_started, Host, Port}, PoolboyOpts) when is_list(Host), is_in
 
 %% @private
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, []}}.
+    Children = lists:map(
+        fun ({PoolName, Props}) ->
+                Size = proplists:get_value(size, Props),
+                MaxOverflow = proplists:get_value(max_overflow, Props),
+                Port = proplists:get_value(port, Props),
+                Host = proplists:get_value(host, Props),
+                Start = proplists:get_value(start_server, Props),
+                build_child_spec(PoolName, Host, Port, Size, MaxOverflow, Start)
+        end,
+        case application:get_env(memcache, pools) of
+            undefined -> [];
+            {ok, Val} -> Val
+        end
+    ),
+    {ok, {{one_for_one, 5, 10}, Children}}.
 
 %%%===================================================================
 %%% Internal functions
