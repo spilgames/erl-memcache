@@ -14,6 +14,7 @@
          flush/1,
          get/2,
          get_pools/0,
+         stats/1,
          remove_all_pools/0,
          set/3,
          set/4,
@@ -168,6 +169,23 @@ flush(Poolname) ->
 
 get_pools() ->
     gen_server:call(?MODULE, get_pools).
+
+-type stats() :: [{atom(), string()}, ...].
+%% @doc Pool statistics
+-spec stats(pool_name()) -> stats() | {error, term()}.
+%% @end
+stats(Poolname) ->
+    Op = fun() ->
+            Worker = poolboy:checkout(Poolname),
+            case gen_server:call(Worker, stats) of
+                {error, R} ->
+                    {error, {poolboy_error, R}};
+                Ret ->
+                    poolboy:checkin(Poolname, Worker),
+                    Ret
+            end
+    end,
+    run_in_pool(Poolname, Op).
 
 %% @doc
 %% Removes all the pools started via start_pool/6. This function is automatically called when this
