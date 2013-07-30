@@ -27,8 +27,10 @@ start_link() ->
 %%%===================================================================
 
 init([]) ->
-    Children=[?CHILD(memcache_pools_sup, memcache_pools_sup, worker, []),
-              ?CHILD(memcache, memcache, worker, [])],
+    Children=[
+        ?CHILD(memcache, memcache, worker, []),
+        ?CHILD(memcache_pools_sup, memcache_pools_sup, supervisor, [])
+    ],
     {ok, {{one_for_all, 5, 10}, Children}}.
 
 %%%===================================================================
