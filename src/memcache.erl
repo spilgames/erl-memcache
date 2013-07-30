@@ -13,6 +13,7 @@
 -export([delete/2,
          flush/1,
          get/2,
+         get_pools/0,
          remove_all_pools/0,
          set/3,
          set/4,
@@ -165,6 +166,9 @@ flush(Poolname) ->
     run_in_pool(Poolname, Op).
 
 
+get_pools() ->
+    gen_server:call(?MODULE, get_pools).
+
 %% @doc
 %% Removes all the pools started via start_pool/6. This function is automatically called when this
 %% application is about to stop.
@@ -185,8 +189,8 @@ init([]) ->
     {ok, #state{pools=?MEMCACHE_POOLS_ETS}}.
 
 %% @private
--type call_type()::{start_pool, pool()} | {stop_pool, pool_name()} | remove_all_pools
-    | term().
+-type call_type()::{start_pool, pool()} | {stop_pool, pool_name()} |
+    remove_all_pools | get_pools | term().
 -spec handle_call(call_type(), any(), #state{}) ->
     {reply, ok | {error, term()}, #state{}} | {noreply, #state{}}.
 handle_call({start_pool, {Poolname, Host, Port, Size, MaxOverflow, StartServer}}, _From, State) ->
@@ -218,6 +222,9 @@ handle_call({stop_pool, Poolname}, _From, State) ->
             end
     end,
     {reply, Res, State};
+handle_call(get_pools, _From, #state{pools=T}=State) ->
+    Pools = ets:foldl(fun(X, Acc) -> [element(1, X)|Acc] end, [], T),
+    {reply, Pools, State};
 handle_call(remove_all_pools, _From, State) ->
     Res = lists:foldl(fun ({Poolname, Host, Port, _Size, _MaxOverflow, StopServer}, Acc) ->
                     PoolRes=memcache_pools_sup:remove_pool(Poolname, Host, Port, StopServer),
