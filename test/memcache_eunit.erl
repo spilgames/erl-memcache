@@ -71,6 +71,7 @@ pool_independence_test_() ->
                 Flush1=memcache:flush(testpool),
                 ReadbackFlushed1=memcache:get(testpool, key),
                 ReadbackFlushed2=memcache:get(testpool2, key),
+                GetPools=memcache:get_pools(),
                 StopPool1=memcache:stop_pool(testpool),
                 StopPool2=memcache:stop_pool(testpool2),
                 [?_assertEqual(ok, StartPool1),
@@ -82,6 +83,7 @@ pool_independence_test_() ->
                  ?_assertEqual(ok, Flush1),
                  ?_assertEqual({ok, <<>>}, ReadbackFlushed1),
                  ?_assertEqual({ok, <<"value2">>}, ReadbackFlushed2),
+                 ?_assertEqual([testpool, testpool2], GetPools),
                  ?_assertEqual(ok, StopPool1),
                  ?_assertEqual(ok, StopPool2)]
         end}.
