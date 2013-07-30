@@ -5,13 +5,14 @@
 
 -behaviour(supervisor).
 
+-include("memcache.hrl").
 -include_lib("erlanglibs/include/logging.hrl").
 
 %% API
 -export([add_pool/6,
          remove_pool/4,
          start_link/0,
-         start_pool/2
+         start_pool/3
 ]).
 
 %% Supervisor callbacks
@@ -68,17 +69,31 @@ remove_pool(Poolname, _Host, _Port, false) ->
 %% @private
 %% @doc
 %% This functions wraps the poolboy call to start the pool of connections with the start_memcache/2
-%% call in order to start the server before if needed
+%% call in order to start the server before if needed.
+%%
+%% If all is fine, registers the pool to ?MEMCACHE_POOL_ETS
 -spec start_pool({start | already_started, memcache:pool_host(), memcache:pool_port()}
-                 | undefined, [{atom(), term()}]) -> {ok, pid()}.
+    | undefined, [{atom(), term()}], tuple()) -> {ok, pid()} | {error, term()}.
 %% @end
-start_pool({start, Host, Port}, PoolboyOpts) when is_list(Host), is_integer(Port) ->
+start_pool({start, Host, Port}, PoolboyOpts, CreateOpts) when is_list(Host), is_integer(Port) ->
     ?INFO("Starting memcache pool and memcached server at ~p", [{Host, Port}]),
     start_memcache(Host, Port),
-    do_start_pool(Host, Port ,PoolboyOpts);
-start_pool({already_started, Host, Port}, PoolboyOpts) when is_list(Host), is_integer(Port) ->
+    case do_start_pool(Host, Port, PoolboyOpts) of
+        {ok, Pid} ->
+            true = ets:insert(?MEMCACHE_POOLS_ETS, [CreateOpts]),
+            {ok, Pid};
+        {error, _} = Err ->
+            Err
+    end;
+start_pool({already_started, Host, Port}, PoolboyOpts, CreateOpts) when is_list(Host), is_integer(Port) ->
     ?INFO("Starting memcache pool", []),
-    do_start_pool(Host, Port ,PoolboyOpts).
+    case do_start_pool(Host, Port, PoolboyOpts) of
+        {ok, Pid} ->
+            true = ets:insert(?MEMCACHE_POOLS_ETS, [CreateOpts]),
+            {ok, Pid};
+        {error, _} = Err ->
+            Err
+    end.
 
 %%%===================================================================
 %%% Supervisor Callbacks
@@ -87,13 +102,13 @@ start_pool({already_started, Host, Port}, PoolboyOpts) when is_list(Host), is_in
 %% @private
 init([]) ->
     Children = lists:map(
-        fun ({PoolName, Props}) ->
+        fun ({Poolname, Props}) ->
                 Size = proplists:get_value(size, Props),
                 MaxOverflow = proplists:get_value(max_overflow, Props),
                 Port = proplists:get_value(port, Props),
                 Host = proplists:get_value(host, Props),
                 Start = proplists:get_value(start_server, Props),
-                build_child_spec(PoolName, Host, Port, Size, MaxOverflow, Start)
+                build_child_spec(Poolname, Host, Port, Size, MaxOverflow, Start)
         end,
         case application:get_env(memcache, pools) of
             undefined -> [];
@@ -114,13 +129,14 @@ build_child_spec(Poolname, Host, Port, Size, MaxOverflow, StartServer) ->
         true -> {start, Host, Port};
         false -> {already_started, Host, Port}
     end,
+    CreateOpts = {Poolname, Host, Port, Size, MaxOverflow, StartServer},
     PoolboyOpts = [{name, {local, Poolname}}, {worker_module, erlmc_conn}, {size, Size},
                    {max_overflow, MaxOverflow}, {host, Host}, {port, Port}],
-    {Poolname, {?MODULE, start_pool, [StartServerOpts, PoolboyOpts]},
+    {Poolname, {?MODULE, start_pool, [StartServerOpts, PoolboyOpts, CreateOpts]},
      transient, 5000, worker, [poolboy]}.
 
 -spec do_start_pool(memcache:pool_host(), memcache:pool_port(), [{atom(), term()}]) ->
-    ok | {error, term()}.
+    {ok, pid()} | {error, term()}.
 do_start_pool(Host, Port, PoolboyOpts) ->
     case wait_for_memcache(Host, Port, ?CHECK_PORT_RETRIES, ?PORT_RETRY_INTERVAL) of
         ok -> start_poolboy(PoolboyOpts);

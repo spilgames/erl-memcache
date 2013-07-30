@@ -4,10 +4,10 @@
 
 -behaviour(gen_server).
 
+-include("memcache.hrl").
 -include_lib("erlanglibs/include/logging.hrl").
 
 -define(DEFAULT_EXPIRATION_TIME, 3600).
--define(MEMCACHE_POOLS_ETS, memcache_pools).
 
 %% API
 -export([delete/2,
@@ -180,8 +180,8 @@ remove_all_pools() ->
 %% @private
 -spec init([]) -> {ok, #state{}}.
 init([]) ->
-    ?MEMCACHE_POOLS_ETS=ets:new(?MEMCACHE_POOLS_ETS,
-                                    [protected, {read_concurrency, true}, named_table]),
+    ?MEMCACHE_POOLS_ETS = ets:new(?MEMCACHE_POOLS_ETS,
+        [public, {read_concurrency, true}, named_table]),
     {ok, #state{pools=?MEMCACHE_POOLS_ETS}}.
 
 %% @private
@@ -195,8 +195,6 @@ handle_call({start_pool, {Poolname, Host, Port, Size, MaxOverflow, StartServer}}
             case memcache_pools_sup:add_pool(Poolname, Host, Port,
                                              Size, MaxOverflow, StartServer) of
                 {ok, _Pid} ->
-                    true=ets:insert(?MEMCACHE_POOLS_ETS,
-                                    [{Poolname, Host, Port, Size, MaxOverflow, StartServer}]),
                     ok;
                 {error, _}=E ->
                     E

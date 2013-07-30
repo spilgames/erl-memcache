@@ -153,8 +153,9 @@ single_pool_restart_test_() ->
 env_test_() ->
     {setup,
         fun () ->
+                application:load(memcache),
                 {ok, F1} = elibs_application:set_env(memcache, pools,
-                    [{testpool, [
+                    [{yaddapool, [
                                 {size, 10},
                                 {max_overflow, 20},
                                 {port, 3333},
@@ -170,7 +171,9 @@ env_test_() ->
             ?_assertEqual(
                 ok,
                 memcache_pools_sup:wait_for_memcache("localhost", 3333, 1, 100)
-            )
+            ),
+            ?_assertEqual({ok, <<"cash">>}, memcache:set(yaddapool, age, <<"cash">>)),
+            ?_assertEqual({ok, <<"cash">>}, memcache:get(yaddapool, age))
         ]
     }.
 
