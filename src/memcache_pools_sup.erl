@@ -10,6 +10,7 @@
 
 %% API
 -export([add_pool/6,
+         add_pool/7,
          remove_pool/4,
          start_link/0,
          start_pool/3
@@ -20,7 +21,7 @@
 
 %% just for testing purposes
 -ifdef('TEST').
--export([start_memcache/2, stop_memcache/2, wait_for_memcache/4]).
+-export([start_memcache/3, stop_memcache/2, wait_for_memcache/4]).
 -endif.
 
 -define(CHECK_PORT_RETRIES, 5).
@@ -39,6 +40,7 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+
 %% @doc
 %% Adds a pool to the list of children of this supervisor
 -spec add_pool(memcache:pool_name(), memcache:pool_host(), memcache:pool_port(),
@@ -46,7 +48,16 @@ start_link() ->
     {ok, pid()} | {error, term()}.
 %% @end
 add_pool(Poolname, Host, Port, Size, MaxOverflow, StartServer) ->
-    ChildSpec = build_child_spec(Poolname, Host, Port, Size, MaxOverflow, StartServer),
+    add_pool(Poolname, Host, Port, [], Size, MaxOverflow, StartServer).
+
+%% @doc
+%% Adds a pool to the list of children of this supervisor
+-spec add_pool(memcache:pool_name(), memcache:pool_host(), memcache:pool_port(), memcache:memcached_opts(),
+               memcache:pool_size(), memcache:pool_max_overflow(), StartServer::boolean()) ->
+    {ok, pid()} | {error, term()}.
+%% @end
+add_pool(Poolname, Host, Port, MemcachedOpts, Size, MaxOverflow, StartServer) ->
+    ChildSpec = build_child_spec(Poolname, Host, Port, MemcachedOpts, Size, MaxOverflow, StartServer),
     supervisor:start_child(?MODULE, ChildSpec).
 
 %% @doc
@@ -68,16 +79,16 @@ remove_pool(Poolname, _Host, _Port, false) ->
 
 %% @private
 %% @doc
-%% This functions wraps the poolboy call to start the pool of connections with the start_memcache/2
+%% This functions wraps the poolboy call to start the pool of connections with the start_memcache/3
 %% call in order to start the server before if needed.
 %%
 %% If all is fine, registers the pool to ?MEMCACHE_POOL_ETS
--spec start_pool({start | already_started, memcache:pool_host(), memcache:pool_port()}
+-spec start_pool({start | already_started, memcache:pool_host(), memcache:pool_port(), memcache:memcached_opts()}
     | undefined, [{atom(), term()}], tuple()) -> {ok, pid()} | {error, term()}.
 %% @end
-start_pool({start, Host, Port}, PoolboyOpts, CreateOpts) when is_list(Host), is_integer(Port) ->
+start_pool({start, Host, Port, MemcachedOpts}, PoolboyOpts, CreateOpts) when is_list(Host), is_integer(Port) ->
     ?INFO("Starting memcache pool and memcached server at ~p", [{Host, Port}]),
-    start_memcache(Host, Port),
+    start_memcache(Host, Port, MemcachedOpts),
     case do_start_pool(Host, Port, PoolboyOpts) of
         {ok, Pid} ->
             true = ets:insert(?MEMCACHE_POOLS_ETS, [CreateOpts]),
@@ -85,7 +96,7 @@ start_pool({start, Host, Port}, PoolboyOpts, CreateOpts) when is_list(Host), is_
         {error, _} = Err ->
             Err
     end;
-start_pool({already_started, Host, Port}, PoolboyOpts, CreateOpts) when is_list(Host), is_integer(Port) ->
+start_pool({already_started, Host, Port, _}, PoolboyOpts, CreateOpts) when is_list(Host), is_integer(Port) ->
     ?INFO("Starting memcache pool", []),
     case do_start_pool(Host, Port, PoolboyOpts) of
         {ok, Pid} ->
@@ -107,13 +118,11 @@ init([]) ->
                 MaxOverflow = proplists:get_value(max_overflow, Props),
                 Port = proplists:get_value(port, Props),
                 Host = proplists:get_value(host, Props),
+                MemcachedOpts = proplists:get_value(opts, Props, []),
                 Start = proplists:get_value(start_server, Props),
-                build_child_spec(Poolname, Host, Port, Size, MaxOverflow, Start)
+                build_child_spec(Poolname, Host, Port, MemcachedOpts, Size, MaxOverflow, Start)
         end,
-        case application:get_env(memcache, pools) of
-            undefined -> [];
-            {ok, Val} -> Val
-        end
+        get_config_value(pools, [])
     ),
     {ok, {{one_for_one, 5, 10}, Children}}.
 
@@ -122,12 +131,12 @@ init([]) ->
 %%%===================================================================
 
 -spec build_child_spec(memcache:pool_name(), memcache:pool_host(), memcache:pool_port(),
-                       memcache:pool_size(), memcache:pool_max_overflow(), boolean()) ->
+                        memcache:pool_config(), memcache:pool_size(), memcache:pool_max_overflow(), boolean()) ->
     supervisor:child_spec().
-build_child_spec(Poolname, Host, Port, Size, MaxOverflow, StartServer) ->
+build_child_spec(Poolname, Host, Port, MemcachedOpts, Size, MaxOverflow, StartServer) ->
     StartServerOpts=case StartServer of
-        true -> {start, Host, Port};
-        false -> {already_started, Host, Port}
+        true -> {start, Host, Port, MemcachedOpts};
+        false -> {already_started, Host, Port, MemcachedOpts}
     end,
     CreateOpts = {Poolname, Host, Port, Size, MaxOverflow, StartServer},
     PoolboyOpts = [{name, {local, Poolname}}, {worker_module, erlmc_conn}, {size, Size},
@@ -169,9 +178,11 @@ wait_for_memcache(Host, Port, Retries, RetryInterval) ->
             {error, {unable_to_connect_to_memcached, Reason}}
     end.
 
--spec start_memcache(memcache:pool_host(), memcache:pool_port()) -> ok | {error, term()}.
-start_memcache(Host, Port) ->
-    Cmd=elibs_string:format("memcached -d -l ~s -m 64 -p ~p", [Host, Port]),
+-spec start_memcache(memcache:pool_host(), memcache:pool_port(), memcache:pool_config()) -> ok | {error, term()}.
+start_memcache(Host, Port, MemcachedOpts) ->
+    Memory = proplists:get_value(memory, MemcachedOpts, ?MEMCACHE_DEFAULT_MEMORY_SIZE),
+    Cmd=elibs_string:format("memcached -d -l ~s -m ~p -p ~p", [Host, Memory, Port]),
+    %io:format("Starting : ~s\n", [Cmd]),
     case os:cmd(Cmd) of
         [] ->
             timer:sleep(100),
@@ -196,3 +207,8 @@ stop_memcache(Host, Port) ->
             {error, Other}
     end.
 
+get_config_value(Key, Default) ->
+    case application:get_env(memcache, Key) of
+        undefined -> Default;
+        {ok, Val} -> Val
+    end.
