@@ -123,7 +123,7 @@ pools_get_restarted_by_sup_test_() ->
 with_started_memcached_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun (_) ->
                 ?_test(begin
-                        ok=memcache_pools_sup:start_memcache("localhost", 3333),
+                        ok=memcache_pools_sup:start_memcache("localhost", 3333, []),
                         ok=memcache:start_pool(testpool, "localhost", 3333, 10, 10, false),
                         ?assertEqual({ok, <<>>}, memcache:get(testpool, any))
                     end)
@@ -146,7 +146,7 @@ single_pool_restart_test_() ->
                 {timeout, 30, [?_test(begin
                         lists:foreach(fun (_) ->
                                     ?assertMatch(ok, memcache:start_pool(testpool, "localhost",
-                                                                         3333, 10, 10, true)),
+                                                                         3333, [{memory, 4}], 10, 10, true)),
                                     ?assertMatch(ok, memcache:stop_pool(testpool))
                             end, lists:seq(1, 20))
                     end)]}
@@ -162,6 +162,7 @@ env_test_() ->
                                 {max_overflow, 20},
                                 {port, 3333},
                                 {host, "localhost"},
+                                {opts, [{memory, 4}]},
                                 {start_server, true}
                             ]
                         }

@@ -21,10 +21,12 @@
          start/0,
          start_link/0,
          start_pool/6,
+         start_pool/7,
          stop/0,
          stop_pool/1
         ]).
 
+-type memcached_opts()::[{memory, non_neg_integer()}].
 -type pool_name()::atom().
 -type pool_host()::string().
 -type pool_port()::pos_integer().
@@ -72,11 +74,14 @@ start_link() ->
 %% server as well. If it was already started, just returns ok. Note that the start server
 %% functionality will only work for starting local memcached instances, so Host should be a
 %% valid name for localhost or an IP address for one of the local network interfaces.
--spec start_pool(pool_name(), pool_host(), pool_port(),
+-spec start_pool(pool_name(), pool_host(), pool_port(), memcached_opts(),
                  pool_size(), pool_max_overflow(), boolean()) -> ok | {error, term()}.
 %% @end
+start_pool(Poolname, Host, Port, MemcachedOpts, Size, MaxOverflow, StartServer) ->
+    gen_server:call(?MODULE, {start_pool, {Poolname, Host, Port, MemcachedOpts, Size, MaxOverflow, StartServer}}).
+
 start_pool(Poolname, Host, Port, Size, MaxOverflow, StartServer) ->
-    gen_server:call(?MODULE, {start_pool, {Poolname, Host, Port, Size, MaxOverflow, StartServer}}).
+    start_pool(Poolname, Host, Port, [], Size, MaxOverflow, StartServer).
 
 %% @doc
 %% Stops the given pool. If the memcached server for the pool had been started by this application,
@@ -188,7 +193,7 @@ stats(Poolname) ->
     run_in_pool(Poolname, Op).
 
 %% @doc
-%% Removes all the pools started via start_pool/6. This function is automatically called when this
+%% Removes all the pools started via start_pool/7. This function is automatically called when this
 %% application is about to stop.
 -spec remove_all_pools() -> [{pool_name(), StopRes::ok | {error, term()}}].
 %% @end
@@ -211,10 +216,10 @@ init([]) ->
     remove_all_pools | get_pools | term().
 -spec handle_call(call_type(), any(), #state{}) ->
     {reply, ok | {error, term()}, #state{}} | {noreply, #state{}}.
-handle_call({start_pool, {Poolname, Host, Port, Size, MaxOverflow, StartServer}}, _From, State) ->
+handle_call({start_pool, {Poolname, Host, Port, MemcachedOpts, Size, MaxOverflow, StartServer}}, _From, State) ->
     Res = case check_pool_availability(Poolname) of
         ok ->
-            case memcache_pools_sup:add_pool(Poolname, Host, Port,
+            case memcache_pools_sup:add_pool(Poolname, Host, Port, MemcachedOpts,
                                              Size, MaxOverflow, StartServer) of
                 {ok, _Pid} ->
                     ok;
