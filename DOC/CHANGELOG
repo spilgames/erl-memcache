@@ -1,4 +1,22 @@
-Current version: 1.0.10
+Current version: 1.2.0
+    NEW support for memcached options, currently limited to memory size
+    NEW support for memcached options, currently limited to memory size
+
+tag: 1.1.2
+    NEW memcache:get_pools/0
+    FIX Environment preconfiguration fixes
+    NEW memcache:get_pools/0
+    FIX properly register memcached instances
+    FIX children startup order
+
+tag: 1.1.1
+    NEW set memcache pools via environment config
+    NEW set memcache pools via environment config
+
+tag: 1.1.0
+    NEW memcache:stats/1
+
+tag: 1.0.10
     NEW erlanglibs 2.7.3
 
 tag: 1.0.9
