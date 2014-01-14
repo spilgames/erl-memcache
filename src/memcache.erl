@@ -48,12 +48,11 @@
 %%%===================================================================
 
 %% @doc
-%% Starts the application and all the necessary dependencies. It returns a function that stops
-%% all that is needed in order to leave the environment as it was.
--spec start() -> {ok, fun (() -> ok)}.
+%% Starts this application
+-spec start() -> ok.
 %% @end
 start() ->
-    elibs_application:start(?MODULE).
+    application:start(?MODULE).
 
 %% @doc
 %% Stops this application

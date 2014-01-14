@@ -9,11 +9,11 @@
 application_start_test_() ->
     ?_test(begin
             error_logger:tty(false),
-            {ok, F} = elibs_application:start(memcache),
+            ok = application:start(memcache),
             ?assertMatch(P when is_pid(P), whereis(memcache_sup)),
             ?assertMatch(P when is_pid(P), whereis(memcache_pools_sup)),
             ?assertMatch(P when is_pid(P), whereis(memcache)),
-            ok = F(),
+            ok = application:stop(memcache),
             ?assertMatch(undefined, whereis(memcache_sup)),
             ?assertMatch(undefined, whereis(memcache_pools_sup)),
             ?assertMatch(undefined, whereis(memcache))
@@ -156,7 +156,8 @@ env_test_() ->
     {setup,
         fun () ->
                 application:load(memcache),
-                {ok, F1} = elibs_application:set_env(memcache, pools,
+                OldEnv = application:get_env(memcache, pools),
+                ok = application:set_env(memcache, pools,
                     [{yaddapool, [
                                 {size, 10},
                                 {max_overflow, 20},
@@ -167,6 +168,12 @@ env_test_() ->
                             ]
                         }
                     ]),
+                F1 = fun () ->
+                        case OldEnv of
+                            undefined -> application:unset_env(memcache, pools);
+                            {ok, Val} -> application:set_env(memcache, pools, Val)
+                        end
+                end,
                 [F1] ++ setup()
         end,
         fun cleanup/1,
@@ -187,8 +194,8 @@ env_test_() ->
 
 setup() ->
     error_logger:tty(false),
-    {ok, F} = memcache:start(),
-    [F].
+    ok = memcache:start(),
+    [fun () -> application:stop(memcache) end].
 
 cleanup(L) ->
     lists:foreach(fun(F) -> F() end, L),
