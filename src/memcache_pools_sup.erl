@@ -182,7 +182,6 @@ wait_for_memcache(Host, Port, Retries, RetryInterval) ->
 start_memcache(Host, Port, MemcachedOpts) ->
     Memory = proplists:get_value(memory, MemcachedOpts, ?MEMCACHE_DEFAULT_MEMORY_SIZE),
     Cmd=elibs_string:format("memcached -d -l ~s -m ~p -p ~p", [Host, Memory, Port]),
-    %io:format("Starting : ~s\n", [Cmd]),
     case os:cmd(Cmd) of
         [] ->
             timer:sleep(100),

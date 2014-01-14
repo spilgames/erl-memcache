@@ -1,0 +1,5 @@
+* Remove elibs_string:format/2 usage
+* Remove the erlanglibs logging macros usage
+* Document the memcached versions and OSs this app is compatible with (or make the start/stop
+  commands configurable)
+* Remove SPIL rebar references
