@@ -5,7 +5,6 @@
 -behaviour(gen_server).
 
 -include("memcache.hrl").
--include_lib("erlanglibs/include/logging.hrl").
 
 -define(DEFAULT_EXPIRATION_TIME, 3600).
 

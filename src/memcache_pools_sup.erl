@@ -6,7 +6,6 @@
 -behaviour(supervisor).
 
 -include("memcache.hrl").
--include_lib("erlanglibs/include/logging.hrl").
 
 %% API
 -export([add_pool/6,
@@ -181,7 +180,10 @@ wait_for_memcache(Host, Port, Retries, RetryInterval) ->
 -spec start_memcache(memcache:pool_host(), memcache:pool_port(), memcache:pool_config()) -> ok | {error, term()}.
 start_memcache(Host, Port, MemcachedOpts) ->
     Memory = proplists:get_value(memory, MemcachedOpts, ?MEMCACHE_DEFAULT_MEMORY_SIZE),
-    Cmd=elibs_string:format("memcached -d -l ~s -m ~p -p ~p", [Host, Memory, Port]),
+    Cmd = lists:flatten(io_lib:format(
+              get_config_value(start_memcached, default_command(start_memcached)),
+              [Host, Memory, Port]
+          )),
     case os:cmd(Cmd) of
         [] ->
             timer:sleep(100),
@@ -193,10 +195,10 @@ start_memcache(Host, Port, MemcachedOpts) ->
 
 -spec stop_memcache(memcache:pool_host(), memcache:pool_port()) -> ok | {error, term()}.
 stop_memcache(Host, Port) ->
-    Cmd = elibs_string:format(
-            "kill -9 $(ps aux | grep memcached | grep ~s | grep ~p | awk '{print $2}')",
-            [Host, Port]
-        ),
+    Cmd = lists:flatten(io_lib:format(
+              get_config_value(stop_memcached, default_command(stop_memcached)),
+              [Host, Port]
+          )),
     case os:cmd(Cmd) of
         [] ->
             timer:sleep(100),
@@ -206,6 +208,13 @@ stop_memcache(Host, Port) ->
             {error, Other}
     end.
 
+-spec default_command(start_memcached | stop_memcached) -> string().
+default_command(start_memcached) ->
+    "memcached -d -l ~s -m ~p -p ~p";
+default_command(stop_memcached) ->
+    "kill -9 $(ps aux | grep memcached | grep ~s | grep ~p | awk '{print $2}')".
+
+-spec get_config_value(atom(), term()) -> term().
 get_config_value(Key, Default) ->
     case application:get_env(memcache, Key) of
         undefined -> Default;

@@ -2,7 +2,7 @@
 
 -behaviour(application).
 
--include_lib("erlanglibs/include/logging.hrl").
+-include("memcache.hrl").
 
 %% Application callbacks
 -export([start/2, stop/1, prep_stop/1]).
