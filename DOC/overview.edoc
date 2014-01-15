@@ -9,6 +9,17 @@ This application uses the following configuration keys:
     and Port (integers).</li>
     <li>stop_memcached: a string template with placeholders for 2 variables: Host (string) and Port
     (integer).</li>
+    <li>pools: a proplist with {Poolname, Poolproperties} tuples, where Poolname is an atom and
+    PoolProperties is a proplist with the following elements:
+        <li>size: an integer with the amount of connections per pool</li>
+        <li>max_overflow: integer</li>
+        <li>port: integer</li>
+        <li>host: string</li>
+        <li>opts: a proplists with options applicable only when starting the memcached server.
+        Currently only memory is supported </li>
+        <li>start: whether this application should be responsible for starting memcached or not
+        (boolean)</li>
+    </li>
 <p/>
 This application has been tested with memcached 1.4.4 in CentOS 5 and 6 and 1.4.13 in Ubuntu 12.04
 using Erlang R15B0[1-3].
