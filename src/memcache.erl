@@ -61,7 +61,7 @@ start() ->
 stop() ->
     application:stop(?MODULE).
 
-%% @doc Starts the server
+%% @private
 -spec start_link() -> {ok, pid()}.
 %% @end
 start_link() ->

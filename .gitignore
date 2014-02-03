@@ -1,1 +1,11 @@
-erl-project
+.eunit/
+ebin/
+deps/
+.dialyzer_plt
+erl_crash.dump
+*.beam
+doc/*.html
+doc/erlang.png
+doc/*.css
+doc/edoc-info
+doc/doc
