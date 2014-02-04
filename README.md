@@ -13,7 +13,7 @@ should be interacted with.
 Internally, this library is a wrapper around poolboy and erlmc_conn. The first one is used to create a pool of
 connections, while the latter creates a persistent connection to Memcached using its binary protocol.
 
-<img src="doc/images/erl-memcache.png" style="max-height: 500px;"/>
+<img src="doc/images/erl-memcache.png" style="max-height: 400px;"/>
 
 <h3> Features </h3>
 
